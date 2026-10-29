@@ -1,5 +1,17 @@
 # Release History
 
+### Vianet changes [29-Oct-2026]
+
+Added:
+* `ALLOWED_COMPANIES` and `ALLOWED_TOOLS` limits for staff machines
+
+Fixed:
+* *query-database* can no longer read or write files on the computer, reach the network or install DuckDB extensions; it only sees the cached report tables, and the setting is locked so a query can't turn it back on
+* When Tally can't be reached, tools now return a clear error (with the host and port) instead of an empty result that looked like "no data". A Tally PC that doesn't answer at all (asleep or off the network) now fails after 10 seconds instead of hanging
+* A report with genuinely no rows still returns an empty result, not an error
+* Values set in the Claude desktop config (e.g. `TALLY_HOST`) are no longer overridden by `.env`. `ALLOWED_COMPANIES` and `ALLOWED_TOOLS` set in `.env` still win, so a user can't loosen them from their own config
+* *ledger-account* and *stock-item-account* tool descriptions now name the column `party_ledger`, matching the actual table
+
 ### Version: v6 [11-Nov-2025]
 
 Added:

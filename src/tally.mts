@@ -163,10 +163,16 @@ function sendTally(xml: string, lstVariables: Map<string, any>): Promise<string>
             let xmlResponse = await postTallyXML(xmlRequest);
             resolve(xmlResponse);
         } catch (err) {
-            reject('');
+            reject(err); // pass the reason on (e.g. Tally unreachable) instead of hiding it
         }
     });
 }
+
+// Message used whenever Tally cannot be reached, so the caller can tell it apart from "no rows"
+const tallyUnreachableMessage = (): string =>
+    `Unable to connect to Tally at ${tallyHost()}:${tallyPort()}. Check that TallyPrime is open with the company loaded, the XML port is enabled, the Tally PC is awake and on the network, and TALLY_HOST / TALLY_PORT are correct.`;
+
+const connectTimeoutMs = 10000; // give up if the Tally PC does not accept the connection within 10 seconds
 
 function postTallyXML(xml: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
@@ -197,11 +203,18 @@ function postTallyXML(xml: string): Promise<string> {
                             reject(httpErr);
                         });
                 });
-            req.on('error', (reqError) => {
-                if (reqError && reqError.message === 'ECONNREFUSED')
-                    reject('Unable to connect to Tally');
-                else
-                    reject(reqError);
+            // a sleeping or switched-off PC never refuses the connection, it just doesn't answer,
+            // so stop waiting after connectTimeoutMs (only for connecting, not for slow reports)
+            req.on('socket', (socket) => {
+                if (socket.connecting) {
+                    const timer = setTimeout(() => req.destroy(Object.assign(new Error('connect timeout'), { code: 'ETIMEDOUT' })), connectTimeoutMs);
+                    socket.once('connect', () => clearTimeout(timer));
+                    socket.once('close', () => clearTimeout(timer));
+                }
+            });
+            req.on('error', (reqError: NodeJS.ErrnoException) => {
+                const code = reqError?.code ? ` (${reqError.code})` : '';
+                reject(tallyUnreachableMessage() + code);
             });
             req.write(xml, 'utf16le');
             req.end();
@@ -336,10 +349,17 @@ function extractReport(reportConfig: m.ModelPullReportInfo, reportInputParams: M
             });
             let resultObj = xmlParser.parse(respContent);
 
+            if (!resultObj || resultObj['DATA'] === undefined) {
+                retval.error = 'Unexpected response received from Tally';
+                return;
+            }
+
             //process response based on the type of output
             if (reportConfig.output.datatype == 'array' && reportConfig.output.fields) {
 
-                let data: any[] = processRows(resultObj['DATA']['ROW'], reportConfig.output.fields);
+                // <DATA></DATA> with no ROW means Tally genuinely returned no rows
+                const lstRows = Array.isArray(resultObj['DATA']?.['ROW']) ? resultObj['DATA']['ROW'] : [];
+                let data: any[] = processRows(lstRows, reportConfig.output.fields);
                 retval.data = data;
             }
             else {
@@ -357,6 +377,9 @@ function extractReport(reportConfig: m.ModelPullReportInfo, reportInputParams: M
             }
 
         } catch (err) {
+            // never let a failure look like "no data": report why the request failed
+            retval.data = undefined;
+            retval.error = typeof err === 'string' && err ? err : `Failed to read data from Tally: ${err instanceof Error ? err.message : 'unknown error'}`;
         } finally {
             resolve(retval);
         }

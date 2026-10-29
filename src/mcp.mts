@@ -1,12 +1,26 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv'
 import { handlePull, jsonToTSV } from './tally.mjs';
 import { cacheTable, executeSQL } from './database.mjs';
 
-// Load .env from the project folder, not the launch folder (Claude Desktop starts servers from its own working dir)
-dotenv.config({ path: path.join(import.meta.dirname, '../.env'), override: true, quiet: true });
+// Load .env from the project folder, not the launch folder (Claude Desktop starts servers from its own working dir).
+// Settings already given by the launcher (e.g. "env" in the Claude desktop config) win over .env, so a stray
+// TALLY_HOST=localhost copied from .env.example cannot silently replace the Tally PC's IP set there.
+const envFile = path.join(import.meta.dirname, '../.env');
+dotenv.config({ path: envFile, override: false, quiet: true });
+
+// Exception: access limits written in .env always win. The .env is meant to sit in a folder staff cannot edit,
+// while the Claude desktop config is editable by the user, so it must not be able to loosen these limits.
+if (fs.existsSync(envFile)) {
+  const fileEnv = dotenv.parse(fs.readFileSync(envFile));
+  for (const key of ['ALLOWED_COMPANIES', 'ALLOWED_TOOLS']) {
+    if (fileEnv[key] !== undefined && fileEnv[key].trim() !== '')
+      process.env[key] = fileEnv[key];
+  }
+}
 
 export async function registerMcpServer(): Promise<McpServer> {
   const mcpServer = new McpServer({
@@ -366,7 +380,7 @@ export async function registerMcpServer(): Promise<McpServer> {
     'ledger-account',
     {
       title: 'Ledger Account',
-      description: `fetches GL ledger account statement with voucher level details containing fields date, voucher_type, voucher_number, party_name, amount, narration . amount = debit is negative and credit is positive. party_name = ledger_name. returns output cached in DuckDB in-memory table (specified in tableID property). Use query-database tool to run SQL queries against that table for further analysis`,
+      description: `fetches GL ledger account statement with voucher level details containing fields date, voucher_type, voucher_number, party_ledger, amount, narration. amount = debit is negative and credit is positive. party_ledger = the party or opposite-side ledger of the voucher. returns output cached in DuckDB in-memory table (specified in tableID property). Use query-database tool to run SQL queries against that table for further analysis`,
       inputSchema: {
         targetCompany: z.string().optional().describe('optional company name. leave it blank or skip this to choose for default company. validate it using list-master tool with collection as company if specified'),
         ledgerName: z.string().describe('exact ledger name, validate it using list-master tool with collection as ledger'),
@@ -411,7 +425,7 @@ export async function registerMcpServer(): Promise<McpServer> {
     'stock-item-account',
     {
       title: 'Stock Item Account',
-      description: `fetches GL stock item account statement with voucher level details containing fields date, voucher_type, voucher_number, party_name, quantity, amount, narration, tracking_number, voucher_category. party_name = ledger_name. quantity = inward as positive and outward as negative. amount = debit is negative and credit is positive, narration = notes / remarks. for calculating closing balance of quantity, consider rows with tracking_number as empty as it is, but for rows with tracking_number having text value, then duplicate rows need to be removed by preparing intermediate output with aggregation of tracking_number and voucher_category with sum of quantity and then comparing quantity of Receipt Note with Purchase and Delivery Note with Sales to identify and remove the rows with Receipt Note and Delivery Note if they are found to be tracked fully / partially . returns output cached in DuckDB in-memory table (specified in tableID property). Use query-database tool to run SQL queries against that table for further analysis`,
+      description: `fetches GL stock item account statement with voucher level details containing fields date, voucher_type, voucher_number, party_ledger, quantity, amount, narration, tracking_number, voucher_category. party_ledger = the party ledger of the voucher. quantity = inward as positive and outward as negative. amount = debit is negative and credit is positive, narration = notes / remarks. for calculating closing balance of quantity, consider rows with tracking_number as empty as it is, but for rows with tracking_number having text value, then duplicate rows need to be removed by preparing intermediate output with aggregation of tracking_number and voucher_category with sum of quantity and then comparing quantity of Receipt Note with Purchase and Delivery Note with Sales to identify and remove the rows with Receipt Note and Delivery Note if they are found to be tracked fully / partially . returns output cached in DuckDB in-memory table (specified in tableID property). Use query-database tool to run SQL queries against that table for further analysis`,
       inputSchema: {
         targetCompany: z.string().optional().describe('optional company name. leave it blank or skip this to choose for default company. validate it using list-master tool with collection as company if specified'),
         itemName: z.string().describe('exact stock item name, validate it using list-master tool with collection as stockitem'),

@@ -63,7 +63,6 @@ export function handlePull(targetReport, inputParams) {
             // ALLOWED_COMPANIES (comma-separated): when set, only these Tally companies can be read.
             // With no company named, the first allowed one is used instead of whichever company is active in Tally.
             const allowedCompanies = (process.env.ALLOWED_COMPANIES || '').split(',').map(c => c.trim()).filter(c => c);
-
             if (objReport) {
                 let lstInputs = new Map();
                 //set target company
@@ -82,7 +81,6 @@ export function handlePull(targetReport, inputParams) {
                         targetCompany = match;
                     }
                 }
-
                 lstInputs.set('targetCompany', targetCompany); //add targetCompany as one of the params
                 //populate input parameters value
                 for (let i = 0; i < objReport.input.length; i++) {
@@ -147,10 +145,13 @@ function sendTally(xml, lstVariables) {
             resolve(xmlResponse);
         }
         catch (err) {
-            reject('');
+            reject(err); // pass the reason on (e.g. Tally unreachable) instead of hiding it
         }
     });
 }
+// Message used whenever Tally cannot be reached, so the caller can tell it apart from "no rows"
+const tallyUnreachableMessage = () => `Unable to connect to Tally at ${tallyHost()}:${tallyPort()}. Check that TallyPrime is open with the company loaded, the XML port is enabled, the Tally PC is awake and on the network, and TALLY_HOST / TALLY_PORT are correct.`;
+const connectTimeoutMs = 10000; // give up if the Tally PC does not accept the connection within 10 seconds
 function postTallyXML(xml) {
     return new Promise((resolve, reject) => {
         try {
@@ -178,11 +179,18 @@ function postTallyXML(xml) {
                     reject(httpErr);
                 });
             });
+            // a sleeping or switched-off PC never refuses the connection, it just doesn't answer,
+            // so stop waiting after connectTimeoutMs (only for connecting, not for slow reports)
+            req.on('socket', (socket) => {
+                if (socket.connecting) {
+                    const timer = setTimeout(() => req.destroy(Object.assign(new Error('connect timeout'), { code: 'ETIMEDOUT' })), connectTimeoutMs);
+                    socket.once('connect', () => clearTimeout(timer));
+                    socket.once('close', () => clearTimeout(timer));
+                }
+            });
             req.on('error', (reqError) => {
-                if (reqError && reqError.message === 'ECONNREFUSED')
-                    reject('Unable to connect to Tally');
-                else
-                    reject(reqError);
+                const code = reqError?.code ? ` (${reqError.code})` : '';
+                reject(tallyUnreachableMessage() + code);
             });
             req.write(xml, 'utf16le');
             req.end();
@@ -300,9 +308,15 @@ function extractReport(reportConfig, reportInputParams) {
                 },
             });
             let resultObj = xmlParser.parse(respContent);
+            if (!resultObj || resultObj['DATA'] === undefined) {
+                retval.error = 'Unexpected response received from Tally';
+                return;
+            }
             //process response based on the type of output
             if (reportConfig.output.datatype == 'array' && reportConfig.output.fields) {
-                let data = processRows(resultObj['DATA']['ROW'], reportConfig.output.fields);
+                // <DATA></DATA> with no ROW means Tally genuinely returned no rows
+                const lstRows = Array.isArray(resultObj['DATA']?.['ROW']) ? resultObj['DATA']['ROW'] : [];
+                let data = processRows(lstRows, reportConfig.output.fields);
                 retval.data = data;
             }
             else {
@@ -320,6 +334,9 @@ function extractReport(reportConfig, reportInputParams) {
             }
         }
         catch (err) {
+            // never let a failure look like "no data": report why the request failed
+            retval.data = undefined;
+            retval.error = typeof err === 'string' && err ? err : `Failed to read data from Tally: ${err instanceof Error ? err.message : 'unknown error'}`;
         }
         finally {
             resolve(retval);

@@ -59,7 +59,7 @@ Works only while the Mac is on the same network as the Tally PC (in office, or o
    }
    ```
 
-   `TALLY_HOST` is the Tally PC's LAN IP. You can put the same values in this folder's `.env` instead; `.env` is now read from the project folder, so it works no matter where Claude launches the server from.
+   `TALLY_HOST` is the Tally PC's LAN IP. You can put the same values in this folder's `.env` instead; `.env` is read from the project folder, so it works no matter where Claude launches the server from. If a value is set in both places, the Claude config wins, except for `ALLOWED_COMPANIES` and `ALLOWED_TOOLS` (see below).
 3. Quick check from the Mac's terminal before restarting Claude: `curl -s --max-time 5 -X POST http://192.168.1.50:9000 -d '<ENVELOPE/>'` should return a response from Tally instead of hanging.
 4. Quit and reopen the Claude desktop app.
 
@@ -112,7 +112,7 @@ Requests for any other company are refused before they reach Tally, the company 
 **Make the limit stick.** These limits live in a file. Anyone who can edit that file, or who can reach Tally's port 9000 with their own tools, can get around them. So:
 
 1. **Windows Firewall on the Tally PC:** allow inbound TCP 9000 only from the IP of the PC running this server, not the whole office network. Tally's XML port has no password of its own, and it accepts imports as well as exports.
-2. **Staff log in as a standard Windows user**, not an administrator. Put the server folder somewhere they can read but not write (for example `C:\Program Files\Tally MCP Server`, set up from an admin account), so they can't edit `.env`.
+2. **Staff log in as a standard Windows user**, not an administrator. Put the server folder somewhere they can read but not write (for example `C:\Program Files\Tally MCP Server`, set up from an admin account), so they can't edit `.env`. Put the limits in that `.env`, not in the Claude desktop config: the config is editable by the user, so limits set in `.env` always take precedence over it.
 3. **Use the staff member's own Claude login** on a business account, so the chats and the Tally figures in them stay under your organisation, and their access ends when you remove their seat.
 4. **Tally login:** have the Tally instance that the server talks to logged in with a restricted Tally user, and test whether your Tally version applies that user's restrictions to XML requests before relying on it.
 
@@ -131,3 +131,7 @@ For the strongest setup, run the server only on the Tally PC (Route B), which st
 | `ALLOWED_TOOLS` | both | (all) | Comma-separated tools to offer, e.g. `list-master,bills-outstanding,stock-summary`. `query-database` is always kept |
 
 Copy `.env.example` to `.env` and fill it in. `.env` is git-ignored so real values never reach GitHub.
+
+Where a variable is set both in `.env` and by the launcher (the `env` block of the Claude desktop config, or the shell), the launcher's value is used. `ALLOWED_COMPANIES` and `ALLOWED_TOOLS` are the exception: when `.env` sets them, `.env` wins, so a user can't loosen them from their own config.
+
+`query-database` can only see the tables the other tools cache. It can't read or write files on the computer or reach the network.

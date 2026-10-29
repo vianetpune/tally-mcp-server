@@ -3,7 +3,15 @@ import duckdb from '@duckdb/node-api';
 import { ModelPullReportOutputFieldInfo } from './models.mjs';
 import { reportColumnMetadata } from './tally.mjs';
 
-const instance = await duckdb.DuckDBInstance.create(':memory:');
+// query-database runs SQL written by the LLM, so the database may only see its own cached tables:
+// no reading or writing files on this computer, no network, no extension installs,
+// and the settings are locked so a query cannot switch them back on.
+const instance = await duckdb.DuckDBInstance.create(':memory:', {
+    enable_external_access: 'false',
+    autoinstall_known_extensions: 'false',
+    autoload_known_extensions: 'false',
+    lock_configuration: 'true'
+});
 const conn = await instance.connect();
 
 const generateRandomString = (): string => {
