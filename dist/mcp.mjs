@@ -1,9 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import path from 'node:path';
 import dotenv from 'dotenv';
 import { handlePull, jsonToTSV } from './tally.mjs';
 import { cacheTable, executeSQL } from './database.mjs';
-dotenv.config({ override: true, quiet: true });
+// Load .env from the project folder, not the launch folder (Claude Desktop starts servers from its own working dir)
+dotenv.config({ path: path.join(import.meta.dirname, '../.env'), override: true, quiet: true });
 export async function registerMcpServer() {
     const mcpServer = new McpServer({
         name: 'Tally Prime MCP Server',

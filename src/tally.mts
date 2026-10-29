@@ -6,7 +6,10 @@ import { XMLParser } from 'fast-xml-parser';
 import * as m from './models.mjs';
 import { utility } from './utility.mjs';
 
-const tally_port = parseInt(process.env.TALLY_PORT || '9000'); // default to 9000 XML port of Tally
+// Tally host/port are read at request time (not import time) so values from .env apply.
+// TALLY_HOST lets the MCP server run on a different machine from Tally Prime (e.g. Mac -> office Windows PC on LAN).
+const tallyHost = (): string => process.env.TALLY_HOST || 'localhost';
+const tallyPort = (): number => parseInt(process.env.TALLY_PORT || '9000'); // default to 9000 XML port of Tally
 const __dirname = import.meta.dirname;
 const lstPullReport: m.ModelPullReportInfo[] = JSON.parse(fs.readFileSync(path.join(__dirname, '../pull/config.json'), 'utf-8'))['reports'];
 
@@ -69,8 +72,8 @@ export function handlePull(targetReport: string, inputParams: Map<string, any>):
 
                 //set target company
                 let targetCompany = '##SVCurrentCompany'; //default value
-                if (inputParams.has('targetCompany') && typeof inputParams.get(targetCompany) == 'string')
-                    targetCompany = inputParams.get(targetCompany); //extract from request object
+                if (inputParams.has('targetCompany') && typeof inputParams.get('targetCompany') == 'string')
+                    targetCompany = inputParams.get('targetCompany'); //extract from request object
 
                 lstInputs.set('targetCompany', targetCompany); //add targetCompany as one of the params
 
@@ -150,8 +153,8 @@ function postTallyXML(xml: string): Promise<string> {
         try {
 
             let req = http.request({
-                hostname: 'localhost',
-                port: tally_port,
+                hostname: tallyHost(),
+                port: tallyPort(),
                 path: '',
                 method: 'POST',
                 headers: {
