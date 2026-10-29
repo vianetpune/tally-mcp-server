@@ -90,6 +90,34 @@ Run the HTTP server on the Tally PC and publish it over HTTPS. The repo's [Linux
 
 Zip the `skills/tally-accounts` folder and upload it as a custom skill in Claude's settings. After that, asking things like "what's overdue over 60 days in Vianet" or "check Vianet vs Viacom intercompany as on 31 March" picks up the skill automatically.
 
+## Setting it up for office staff
+
+You can run the server on a staff member's PC (a Tally client machine works) and limit what it can read. How strong the limit is depends on who controls the machine the server runs on.
+
+**Limit what the server offers.** In the server's `.env`:
+
+```
+ALLOWED_COMPANIES=Vianet
+ALLOWED_TOOLS=list-master,bills-outstanding,stock-summary,stock-item-balance
+```
+
+Requests for any other company are refused before they reach Tally, the company list only shows allowed companies, and tools not listed don't exist for Claude. Useful profiles:
+
+| Role | `ALLOWED_TOOLS` |
+|---|---|
+| Collections / sales follow-up | `list-master,bills-outstanding,ledger-account` |
+| Stock and dispatch | `list-master,stock-summary,stock-item-balance,stock-item-account` |
+| Accounts (full) | leave empty |
+
+**Make the limit stick.** These limits live in a file. Anyone who can edit that file, or who can reach Tally's port 9000 with their own tools, can get around them. So:
+
+1. **Windows Firewall on the Tally PC:** allow inbound TCP 9000 only from the IP of the PC running this server, not the whole office network. Tally's XML port has no password of its own, and it accepts imports as well as exports.
+2. **Staff log in as a standard Windows user**, not an administrator. Put the server folder somewhere they can read but not write (for example `C:\Program Files\Tally MCP Server`, set up from an admin account), so they can't edit `.env`.
+3. **Use the staff member's own Claude login** on a business account, so the chats and the Tally figures in them stay under your organisation, and their access ends when you remove their seat.
+4. **Tally login:** have the Tally instance that the server talks to logged in with a restricted Tally user, and test whether your Tally version applies that user's restrictions to XML requests before relying on it.
+
+For the strongest setup, run the server only on the Tally PC (Route B), which staff can't change, and give them access to the connector rather than to a copy of the server.
+
 ## Environment variables
 
 | Variable | Used by | Default | Meaning |
@@ -99,5 +127,7 @@ Zip the `skills/tally-accounts` folder and upload it as a custom skill in Claude
 | `PORT` | `server.mjs` | `3000` | HTTP port for Route B |
 | `MCP_DOMAIN` | `server.mjs` | `http://localhost:3000` | Public HTTPS address for Route B |
 | `PASSWORD` | `server.mjs` | `password` (unsafe) | Sign-in password for Route B |
+| `ALLOWED_COMPANIES` | both | (all) | Comma-separated Tally companies this server may read. With no company named, the first one is used |
+| `ALLOWED_TOOLS` | both | (all) | Comma-separated tools to offer, e.g. `list-master,bills-outstanding,stock-summary`. `query-database` is always kept |
 
 Copy `.env.example` to `.env` and fill it in. `.env` is git-ignored so real values never reach GitHub.

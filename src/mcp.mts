@@ -15,6 +15,15 @@ export async function registerMcpServer(): Promise<McpServer> {
     version: '1.0.0'
   });
 
+  // ALLOWED_TOOLS (comma-separated tool names): when set, only these tools are offered.
+  // query-database is always kept; it can only read tables produced by the tools that are offered.
+  const allowedTools = (process.env.ALLOWED_TOOLS || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+  if (allowedTools.length > 0) {
+    const register = mcpServer.registerTool.bind(mcpServer);
+    (mcpServer as any).registerTool = (name: string, ...rest: any[]) =>
+      (name == 'query-database' || allowedTools.includes(name.toLowerCase())) ? (register as any)(name, ...rest) : undefined;
+  }
+
   mcpServer.registerTool(
     'query-database',
     {

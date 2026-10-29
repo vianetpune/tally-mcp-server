@@ -37,6 +37,7 @@ Dates are always `YYYY-MM-DD`. All tools except `query-database` accept an optio
 5. **Validate names before using them.** Run `list-master` with `company` before setting `targetCompany`, and with `ledger` or `stockitem` before passing a ledger or item name. Use the exact spelling Tally returns. Use `ILIKE '%term%'` via `query-database` when the person gives a partial name.
 6. **Indian financial year** runs 1 April to 31 March. "This year" means the current FY; "last year" means the previous FY. State the period you used.
 7. **Tally must be open with the company loaded.** If a tool errors with a connection failure, tell the person that Tally isn't reachable (Tally closed, XML port 9000 off, PC asleep, or wrong TALLY_HOST) rather than retrying in a loop.
+8. **Access limits are deliberate.** If a tool is missing or a company is refused ("not allowed on this server"), this computer has been set up with restricted access. Tell the person what you can't reach and work with what is available; don't look for ways around it.
 
 ## Getting oriented (start of any session)
 

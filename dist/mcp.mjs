@@ -12,6 +12,15 @@ export async function registerMcpServer() {
         title: 'Tally Prime',
         version: '1.0.0'
     });
+
+  // ALLOWED_TOOLS (comma-separated tool names): when set, only these tools are offered.
+  // query-database is always kept; it can only read tables produced by the tools that are offered.
+  const allowedTools = (process.env.ALLOWED_TOOLS || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+  if (allowedTools.length > 0) {
+    const register = mcpServer.registerTool.bind(mcpServer);
+    mcpServer.registerTool = (name, ...rest) =>
+      (name == 'query-database' || allowedTools.includes(name.toLowerCase())) ? register(name, ...rest) : undefined;
+  }
     mcpServer.registerTool('query-database', {
         title: 'Query Database',
         description: `executes sql query on DuckDB in-memory database for querying cached Tally Prime report data in table generated as output by other tools (in tableID property from tool output response). These tables are temporary and will be dropped after 15 minutes automatically. Use this tool to run complex analytical queries to aggregate, filter, sort results. Returns output in tab separated format`,

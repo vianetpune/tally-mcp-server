@@ -65,6 +65,10 @@ export function handlePull(targetReport: string, inputParams: Map<string, any>):
         };
         try {
             let objReport = lstPullReport.find(p => p.name == targetReport);
+            // ALLOWED_COMPANIES (comma-separated): when set, only these Tally companies can be read.
+            // With no company named, the first allowed one is used instead of whichever company is active in Tally.
+            const allowedCompanies = (process.env.ALLOWED_COMPANIES || '').split(',').map(c => c.trim()).filter(c => c);
+
 
             if (objReport) {
 
@@ -74,6 +78,19 @@ export function handlePull(targetReport: string, inputParams: Map<string, any>):
                 let targetCompany = '##SVCurrentCompany'; //default value
                 if (inputParams.has('targetCompany') && typeof inputParams.get('targetCompany') == 'string')
                     targetCompany = inputParams.get('targetCompany'); //extract from request object
+
+                if (allowedCompanies.length > 0) {
+                    if (targetCompany == '##SVCurrentCompany')
+                        targetCompany = allowedCompanies[0];
+                    else {
+                        const match = allowedCompanies.find(c => c.toLowerCase() == String(targetCompany).trim().toLowerCase());
+                        if (!match) {
+                            retval.error = `Access to company "${targetCompany}" is not allowed on this server`;
+                            return resolve(retval);
+                        }
+                        targetCompany = match;
+                    }
+                }
 
                 lstInputs.set('targetCompany', targetCompany); //add targetCompany as one of the params
 
@@ -111,6 +128,9 @@ export function handlePull(targetReport: string, inputParams: Map<string, any>):
                     }
                 }
                 retval = await extractReport(objReport, lstInputs);
+                // hide companies outside ALLOWED_COMPANIES from the company list
+                if (allowedCompanies.length > 0 && targetReport == 'list-master' && String(inputParams.get('collection')).toLowerCase() == 'company' && Array.isArray(retval.data))
+                    retval.data = retval.data.filter((r: any) => allowedCompanies.some(c => c.toLowerCase() == String(r.name).trim().toLowerCase()));
             }
             else
                 retval.error = 'Invalid report';
